@@ -1,0 +1,46 @@
+name: Build APK
+
+on:
+  push:
+    paths:
+      - '*.zip'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          ZIP=$(ls -1 *.zip | head -n 1)
+          echo "Using $ZIP"
+          mkdir -p src_unzipped
+          unzip -q -o "$ZIP" -d src_unzipped
+          SETTINGS=$(find src_unzipped -maxdepth 3 -name 'settings.gradle*' | head -n 1)
+          test -n "$SETTINGS" || { echo "No settings.gradle found in zip"; exit 1; }
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DroidMap-debug-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          
